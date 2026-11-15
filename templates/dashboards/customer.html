@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Welcome, {{ user.first_name|default:user.username }}</h2>
+<p>Email: {{ user.email }}</p>
+<p>Role: {{ user.get_role_display }}</p>
+<a href="{% url 'profile' %}">View profile</a>
+<form method="post" action="{% url 'logout' %}">{% csrf_token %}
+  <button type="submit">Log out</button>
+</form>
+{% endblock %}
