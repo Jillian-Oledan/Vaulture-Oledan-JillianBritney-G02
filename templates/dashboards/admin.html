@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Admin Dashboard</h2>
+<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Log out</button></form>
+<p>Total users: {{ total }}</p>
+<table>
+  {% for u in users %}
+  <tr><td>{{ u.username }}</td><td>{{ u.email }}</td><td>{{ u.role }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
