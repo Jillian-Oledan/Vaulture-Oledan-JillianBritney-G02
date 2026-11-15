@@ -10,6 +10,12 @@ from .decorators import role_required
 from .models import User
 
 
+def home(request):
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+    return redirect("login")
+
+
 def register_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard")

@@ -18,7 +18,6 @@ class RegisterForm(UserCreationForm):
             raise forms.ValidationError("This email is already registered.")
         return email
 
-
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = User

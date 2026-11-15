@@ -9,4 +9,8 @@ urlpatterns = [
     path("dashboard/customer/", views.customer_dashboard, name="customer_dashboard"),
     path("profile/", views.profile_view, name="profile"),
     path("profile/edit/", views.profile_edit, name="profile_edit"),
+<<<<<<< HEAD
+=======
+    path("", views.home, name="home"),
+>>>>>>> feature/account-login-logout
 ]
