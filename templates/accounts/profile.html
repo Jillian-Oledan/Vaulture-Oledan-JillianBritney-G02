@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}My Profile{% endblock %}
+{% block content %}
+<div style="max-width: 500px; margin: 2rem auto; padding: 1.5rem; border: 1px solid #ddd; border-radius: 8px;">
+  <h2>{{ user.first_name|default:user.username }}</h2>
+  <p><strong>Email:</strong> {{ user.email }}</p>
+  <p><strong>Role:</strong> {{ user.role|capfirst }}</p>
+  <p><strong>Member since:</strong> {{ user.date_joined|date:"F Y" }}</p>
+
+  <hr>
+</div>
+{% endblock %}  

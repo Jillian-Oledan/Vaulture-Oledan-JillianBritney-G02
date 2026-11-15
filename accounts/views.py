@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.shortcuts import render, redirect
 from .forms import RegisterForm
+from .forms import ProfileForm
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required   
 from django.http import HttpResponse
@@ -64,5 +65,19 @@ def customer_dashboard(request):
     return render(request, "dashboards/customer.html")
 
 
+@login_required
 def profile_view(request):
-    return HttpResponse("Profile Page")
+    return render(request, "accounts/profile.html")
+
+
+@login_required
+def profile_edit(request):
+    form = ProfileForm(request.POST or None, request.FILES or None,
+                       instance=request.user)
+    if request.method == "POST":
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Profile updated.")
+            return redirect("profile")
+        messages.error(request, "Could not update profile.")
+    return render(request, "accounts/profile_edit.html", {"form": form})
