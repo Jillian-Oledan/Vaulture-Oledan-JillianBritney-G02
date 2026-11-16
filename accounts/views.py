@@ -26,7 +26,7 @@ def register_view(request):
         if form.is_valid():
             form.save()
             messages.success(request, "Account created! Please log in.")
-            return redirect("login_view")
+            return redirect("login")
         messages.error(request, "Please fix the errors below.")
 
     return render(request, "accounts/register.html", {"form": form})

@@ -6,7 +6,7 @@ class User(AbstractUser):
     ROLES = [(ADMIN, "Admin"), (MEMBER, "Member")]
 
     email = models.EmailField(unique=True)
-    role = models.CharField(max_length=10, choices=ROLES, default=MEMBER)
+    role = models.CharField(max_length=10, choices=[('admin', 'Admin'), ('customer', 'Customer')], default='customer')
     contact_number = models.CharField(max_length=20, blank=True)
     photo = models.ImageField(upload_to="profiles/", blank=True, null=True)
 
