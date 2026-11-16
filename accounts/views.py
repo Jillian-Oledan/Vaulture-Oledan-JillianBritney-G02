@@ -61,9 +61,16 @@ def dashboard_redirect(request):
 
 @role_required("admin")
 def admin_dashboard(request):
-    ctx = {"users": User.objects.all().order_by("-date_joined"),
-           "total": User.objects.count()}
-    return render(request, "dashboards/admin.html", ctx)
+    users = User.objects.all()
+    total = users.count()
+    admins = users.filter(role='admin').count()
+    customers = users.filter(role='customer').count()
+    return render(request, "dashboards/admin.html", {
+        "users": users,
+        "total": total,
+        "admins": admins,
+        "customers": customers,
+    })
 
 
 @role_required("customer")

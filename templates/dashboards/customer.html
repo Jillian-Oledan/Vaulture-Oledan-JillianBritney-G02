@@ -1,10 +1,16 @@
 {% extends "base.html" %}
+{% block title %}My Dashboard{% endblock %}
 {% block content %}
-<h2>Welcome, {{ user.first_name|default:user.username }}</h2>
-<p>Email: {{ user.email }}</p>
-<p>Role: {{ user.get_role_display }}</p>
-<a href="{% url 'profile' %}">View profile</a>
-<form method="post" action="{% url 'logout' %}">{% csrf_token %}
-  <button type="submit">Log out</button>
-</form>
+<div class="container">
+  <h1 class="page-title">Hello, {{ user.first_name|default:user.username }}</h1>
+  <p class="sub">Manage your vault</p>
+  <div class="card">
+    <h3 style="margin-top:0">Quick actions</h3>
+    <a class="btn" href="{% url 'profile' %}">View profile</a>
+    <a class="btn btn-outline" href="{% url 'profile_edit' %}">Edit profile</a>
+    <form method="post" action="{% url 'logout' %}" style="display:inline">{% csrf_token %}
+      <button class="btn btn-outline" type="submit">Log out</button>
+    </form>
+  </div>
+</div>
 {% endblock %}

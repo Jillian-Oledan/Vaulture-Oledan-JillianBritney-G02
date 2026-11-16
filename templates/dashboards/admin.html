@@ -1,11 +1,31 @@
 {% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
 {% block content %}
-<h2>Admin Dashboard</h2>
-<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Log out</button></form>
-<p>Total users: {{ total }}</p>
-<table>
-  {% for u in users %}
-  <tr><td>{{ u.username }}</td><td>{{ u.email }}</td><td>{{ u.role }}</td></tr>
-  {% endfor %}
-</table>
+<div class="container">
+  <h1 class="page-title">Admin Dashboard</h1>
+  <form method="post" action="{% url 'logout' %}" style="margin-bottom:18px">{% csrf_token %}
+  </form>
+
+  <div class="stats">
+    <div class="card stat"><div class="num">{{ total }}</div><div class="label">Total users</div></div>
+    <div class="card stat"><div class="num">{{ admins }}</div><div class="label">Admins</div></div>
+    <div class="card stat"><div class="num">{{ customers }}</div><div class="label">Customers</div></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">All users</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Username</th><th>Email</th><th>Role</th><th>Joined</th></tr>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td><td>{{ u.email }}</td>
+          <td><span class="pill {{ u.role }}">{{ u.get_role_display }}</span></td>
+          <td>{{ u.date_joined|date:"M d, Y" }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
 {% endblock %}
