@@ -5,56 +5,38 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Vaulture{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
-<body class="bg-gray-50 min-h-screen flex flex-col">
-
-<header class="bg-white border-b border-gray-200 shadow-sm">
-  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-    <a href="/" class="text-xl font-bold text-gray-900">MyApp</a>
-    <nav class="flex items-center gap-4">
+<body>
+<header class="navbar">
+  <div class="inner">
+    <a class="brand" href="/">Vaulture</a>
+    <nav class="nav-links">
       {% if user.is_authenticated %}
         {% if user.role == 'admin' %}
-          <a href="{% url 'admin_dashboard' %}" class="text-sm text-gray-600 hover:text-gray-900 font-medium">Admin Panel</a>
+          <a href="{% url 'admin_dashboard' %}">Admin Panel</a>
         {% else %}
-          <a href="{% url 'customer_dashboard' %}" class="text-sm text-gray-600 hover:text-gray-900 font-medium">Dashboard</a>
+          <a href="{% url 'customer_dashboard' %}">Dashboard</a>
         {% endif %}
-        <a href="{% url 'profile' %}" class="text-sm text-gray-600 hover:text-gray-900 font-medium">Profile</a>
-        <span class="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 font-medium">
-          {{ user.get_role_display }}
-        </span>
-        <form method="post" action="{% url 'logout' %}">
-          {% csrf_token %}
-          <button type="submit" class="text-sm px-3 py-1.5 rounded-md bg-red-50 text-red-600 hover:bg-red-100 font-medium">
-            Logout
-          </button>
+        <a href="{% url 'profile' %}">Profile</a>
+        <span class="role-badge">{{ user.get_role_display }}</span>
+        <form method="post" action="{% url 'logout' %}" style="margin:0">
+          {% csrf_token %}<button type="submit">Logout</button>
         </form>
       {% else %}
-        <a href="{% url 'login' %}" class="text-sm text-gray-600 hover:text-gray-900 font-medium">Login</a>
-        <a href="{% url 'register' %}" class="text-sm px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
-          Register
-        </a>
+        <a href="{% url 'login' %}">Login</a>
+        <a href="{% url 'register' %}">Register</a>
       {% endif %}
     </nav>
   </div>
 </header>
 
 {% if messages %}
-<div class="max-w-6xl mx-auto px-4 mt-4 w-full">
-  {% for m in messages %}
-  <div class="mb-2 px-4 py-3 rounded-md text-sm font-medium
-    {% if 'success' in m.tags %}bg-green-50 text-green-800 border border-green-200
-    {% elif 'error' in m.tags %}bg-red-50 text-red-800 border border-red-200
-    {% else %}bg-blue-50 text-blue-800 border border-blue-200{% endif %}">
-    {{ m }}
-  </div>
-  {% endfor %}
+<div class="messages">
+  {% for m in messages %}<div class="alert {{ m.tags }}">{{ m }}</div>{% endfor %}
 </div>
 {% endif %}
 
-<main class="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
-  {% block content %}{% endblock %}
-</main>
-
+<main>{% block content %}{% endblock %}</main>
 </body>
-</html>   
+</html>
