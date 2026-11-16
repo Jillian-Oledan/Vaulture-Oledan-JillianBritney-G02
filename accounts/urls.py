@@ -10,4 +10,8 @@ urlpatterns = [
     path("profile/", views.profile_view, name="profile"),
     path("profile/edit/", views.profile_edit, name="profile_edit"), 
     path("", views.home, name="home"),
+
+    path("vault/setup/", views.vault_setup, name="vault_setup"),
+    path("vault/entries/", views.vault_entries, name="vault_entries"),
+    path("vault/entries/<int:pk>/", views.vault_entry_detail, name="vault_entry_detail"),
 ]

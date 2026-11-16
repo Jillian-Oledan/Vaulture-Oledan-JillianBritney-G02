@@ -3,7 +3,8 @@
 {% block content %}
 <div class="container">
   <h1 class="page-title">Hello, {{ user.first_name|default:user.username }}</h1>
-  <p class="sub">Manage your vault</p>
+  <p class="sub">Manage your vault. Everything is encrypted in your browser before it is saved.</p>
+
   <div class="card">
     <h3 style="margin-top:0">Quick actions</h3>
     <a class="btn" href="{% url 'profile' %}">View profile</a>
@@ -12,5 +13,198 @@
       <button class="btn btn-outline" type="submit">Log out</button>
     </form>
   </div>
+
+  <div class="card" id="lock-card">
+    <h3 id="lock-title" style="margin-top:0"></h3>
+    <p id="lock-help" class="sub"></p>
+    <p><input type="password" id="mk" placeholder="Master key" autocomplete="off"></p>
+    <p><input type="password" id="mk2" placeholder="Confirm master key" autocomplete="off" style="display:none"></p>
+    <button class="btn" id="lock-btn" type="button"></button>
+    <p id="lock-err" style="color:#c0392b"></p>
+  </div>
+
+  <div id="vault" style="display:none">
+    <div class="card">
+      <h3 style="margin-top:0" id="form-title">Add credential</h3>
+      <form id="entry-form">
+        <input type="hidden" id="eid">
+        <p><input id="f-title" placeholder="Title (e.g. Gmail)" maxlength="100" required></p>
+        <p><select id="f-type"><option value="login">Login</option><option value="note">Secure note</option></select></p>
+        <p><input id="f-user" placeholder="Username / email" autocomplete="off"></p>
+        <p><input id="f-pass" placeholder="Password" autocomplete="off">
+           <button type="button" class="btn btn-outline" id="gen">Generate</button></p>
+        <p><input id="f-url" placeholder="Website URL" autocomplete="off"></p>
+        <p><textarea id="f-notes" placeholder="Notes" rows="3"></textarea></p>
+        <button class="btn" type="submit">Save</button>
+        <button class="btn btn-outline" type="button" id="cancel">Clear</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Saved credentials</h3>
+      <p><input id="search" placeholder="Search by title"></p>
+      <div id="list"></div>
+    </div>
+    <button class="btn btn-outline" type="button" onclick="location.reload()">Lock vault</button>
+  </div>
 </div>
+
+{{ meta|json_script:"vault-meta" }}
+<script>
+const meta = JSON.parse(document.getElementById("vault-meta").textContent);
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder(), dec = new TextDecoder();
+let key = null, items = [], timer;
+
+const b64 = b => btoa(String.fromCharCode(...new Uint8Array(b)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function deriveKey(pw, salt) {
+  const base = await crypto.subtle.importKey("raw", enc.encode(pw), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name: "PBKDF2", salt: unb64(salt), iterations: 310000, hash: "SHA-256"},
+    base, {name: "AES-GCM", length: 256}, false, ["encrypt", "decrypt"]);
+}
+async function encrypt(k, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name: "AES-GCM", iv}, k, enc.encode(JSON.stringify(obj)));
+  return b64(iv) + "." + b64(ct);
+}
+async function decrypt(k, str) {
+  const [iv, ct] = str.split(".");
+  const pt = await crypto.subtle.decrypt({name: "AES-GCM", iv: unb64(iv)}, k, unb64(ct));
+  return JSON.parse(dec.decode(pt));
+}
+async function api(url, method, body) {
+  const r = await fetch(url, {
+    method, headers: {"Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}"},
+    body: body ? JSON.stringify(body) : undefined});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+/* ---- lock screen ---- */
+const isNew = !meta.kdf_salt;
+$("lock-title").textContent = isNew ? "Create your master key" : "Unlock your vault";
+$("lock-help").textContent = isNew
+  ? "This key encrypts everything. It is never sent to the server and cannot be recovered if you forget it. Use at least 12 characters."
+  : "Enter your master key to decrypt your vault.";
+$("lock-btn").textContent = isNew ? "Create master key" : "Unlock";
+if (isNew) $("mk2").style.display = "";
+
+$("lock-btn").onclick = async () => {
+  const pw = $("mk").value;
+  $("lock-err").textContent = "";
+  try {
+    if (isNew) {
+      if (pw.length < 12) throw new Error("Master key must be at least 12 characters.");
+      if (pw !== $("mk2").value) throw new Error("Master keys do not match.");
+      const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+      key = await deriveKey(pw, salt);
+      await api("{% url 'vault_setup' %}", "POST",
+        {kdf_salt: salt, master_key_check: await encrypt(key, {check: "vaulture"})});
+    } else {
+      key = await deriveKey(pw, meta.kdf_salt);
+      try { await decrypt(key, meta.key_check); }
+      catch (e) { key = null; throw new Error("Wrong master key."); }
+    }
+    $("mk").value = $("mk2").value = "";
+    $("lock-card").style.display = "none";
+    $("vault").style.display = "";
+    await loadItems();
+    ["mousemove", "keydown", "click"].forEach(ev => document.addEventListener(ev, resetTimer));
+    resetTimer();
+  } catch (e) { $("lock-err").textContent = e.message; }
+};
+
+/* auto-lock after 5 minutes of inactivity */
+function resetTimer() { clearTimeout(timer); timer = setTimeout(() => location.reload(), 300000); }
+
+/* ---- vault ---- */
+async function loadItems() {
+  const rows = await api("{% url 'vault_entries' %}", "GET");
+  items = [];
+  for (const r of rows) {
+    try { items.push({...r, data: await decrypt(key, r.encrypted_data)}); } catch (e) {}
+  }
+  render();
+}
+function btn(text, fn) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "btn btn-outline"; b.textContent = text; b.onclick = fn;
+  return b;
+}
+function render() {
+  const q = $("search").value.toLowerCase(), box = $("list");
+  box.replaceChildren();
+  const shown = items.filter(i => i.title.toLowerCase().includes(q));
+  if (!shown.length) { box.textContent = "No entries yet."; return; }
+  for (const i of shown) {
+    const d = document.createElement("div");
+    d.style.cssText = "border-top:1px solid #ddd;padding:10px 0";
+    const h = document.createElement("strong");
+    h.textContent = i.title + (i.entry_type === "note" ? " (note)" : "");
+    d.append(h);
+    const line = (label, val) => {
+      if (!val) return;
+      const p = document.createElement("div");
+      p.textContent = label + ": " + val;
+      d.append(p);
+    };
+    line("Username", i.data.username); line("URL", i.data.url); line("Notes", i.data.notes);
+    const row = document.createElement("div");
+    if (i.data.password) {
+      const pw = document.createElement("div");
+      pw.textContent = "Password: ••••••••";
+      let shownPw = false;
+      row.append(
+        btn("Show", e => { shownPw = !shownPw;
+          pw.textContent = "Password: " + (shownPw ? i.data.password : "••••••••");
+          e.target.textContent = shownPw ? "Hide" : "Show"; }),
+        btn("Copy password", async () => {
+          await navigator.clipboard.writeText(i.data.password);
+          setTimeout(() => navigator.clipboard.writeText("").catch(() => {}), 30000);
+        }));
+      d.append(pw);
+    }
+    row.append(
+      btn("Edit", () => {
+        $("eid").value = i.id; $("f-title").value = i.title; $("f-type").value = i.entry_type;
+        $("f-user").value = i.data.username || ""; $("f-pass").value = i.data.password || "";
+        $("f-url").value = i.data.url || ""; $("f-notes").value = i.data.notes || "";
+        $("form-title").textContent = "Edit credential"; window.scrollTo(0, 0);
+      }),
+      btn("Delete", async () => {
+        if (!confirm("Delete this entry?")) return;
+        await api("/vault/entries/" + i.id + "/", "DELETE");
+        await loadItems();
+      }));
+    d.append(row);
+    box.append(d);
+  }
+}
+function resetForm() {
+  $("entry-form").reset(); $("eid").value = ""; $("form-title").textContent = "Add credential";
+}
+$("entry-form").onsubmit = async e => {
+  e.preventDefault();
+  const data = {username: $("f-user").value, password: $("f-pass").value,
+                url: $("f-url").value, notes: $("f-notes").value};
+  const body = {title: $("f-title").value.trim(), entry_type: $("f-type").value,
+                encrypted_data: await encrypt(key, data)};
+  const id = $("eid").value;
+  try {
+    if (id) await api("/vault/entries/" + id + "/", "PUT", body);
+    else await api("{% url 'vault_entries' %}", "POST", body);
+    resetForm(); await loadItems();
+  } catch (err) { alert(err.message); }
+};
+$("cancel").onclick = resetForm;
+$("search").oninput = render;
+$("gen").onclick = () => {
+  const c = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*";
+  $("f-pass").value = [...crypto.getRandomValues(new Uint32Array(18))].map(n => c[n % c.length]).join("");
+};
+</script>
 {% endblock %}
