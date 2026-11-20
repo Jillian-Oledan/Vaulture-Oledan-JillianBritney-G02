@@ -24,7 +24,4 @@ A simple web-based password manager built with Django. Users store their private
 
 ## Tech stack
 
-Django (backend and templates)
-PostgreSQL via Supabase (or local PostgreSQL)
-Web Crypto API
-HTML/CSS/JavaScript.
+Django (backend and templates), PostgreSQL via Supabase, Web Crypto API, HTML/CSS.
