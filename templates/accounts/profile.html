@@ -1,12 +1,43 @@
 {% extends "base.html" %}
 {% block title %}My Profile{% endblock %}
 {% block content %}
-<div style="max-width: 500px; margin: 2rem auto; padding: 1.5rem; border: 1px solid #ddd; border-radius: 8px;">
-  <h2>{{ user.first_name|default:user.username }}</h2>
-  <p><strong>Email:</strong> {{ user.email }}</p>
-  <p><strong>Role:</strong> {{ user.role|capfirst }}</p>
-  <p><strong>Member since:</strong> {{ user.date_joined|date:"F Y" }}</p>
+<div class="container" style="max-width: 500px;">
+  <div class="card">
+    <h2>{{ user.username }}</h2>
+    <p><strong>First name:</strong> {{ user.first_name|default:"—" }}</p>
+    <p><strong>Last name:</strong> {{ user.last_name|default:"—" }}</p>
+    <p><strong>Email:</strong> {{ user.email }}</p>
+    <p><strong>Member since:</strong> {{ user.date_joined|date:"F Y" }}</p>
+  </div>
 
-  <hr>
+  {% if meta.kdf_salt %}
+  <div class="card" style="margin-top:16px">
+    <h3 style="margin-top:0">Change master password</h3>
+
+    <form method="post" action="{% url 'change_master_key' %}" class="form">
+      {% csrf_token %}
+
+      <div class="warning">
+        <strong>Important:</strong> Changing your password will re-encrypt your vault.
+        Make sure you remember the new one.
+      </div>
+
+      <p class="field">
+        {{ "Current password"|capfirst }}
+        <input type="password" name="old_password" required>
+      </p>
+      <p class="field">
+        <label>New password</label>
+        <input type="password" name="new_password" required>
+      </p>
+      <p class="field">
+        <label>Confirm new password</label>
+        <input type="password" name="new_password2" required>
+      </p>
+
+      <button class="btn" type="submit">Change password</button>
+    </form>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}   

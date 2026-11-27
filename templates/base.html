@@ -19,7 +19,6 @@
           <a href="{% url 'customer_dashboard' %}">Dashboard</a>
         {% endif %}
         <a href="{% url 'profile' %}">Profile</a>
-        <span class="role-badge">{{ user.get_role_display }}</span>
         <form method="post" action="{% url 'logout' %}" style="margin:0">
           {% csrf_token %}<button type="submit">Logout</button>
         </form>

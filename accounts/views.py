@@ -1,22 +1,16 @@
 import base64
+import json
 
 from django.contrib import messages
-from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.decorators import login_required   
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import login, logout
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_POST, require_http_methods
 
-from .forms import RegisterForm
-from .forms import ProfileForm
-
+from .forms import RegisterForm, ProfileForm
 from .decorators import role_required
-
-from .models import User
 from .models import User, VaultEntry
-
-import json
 
 
 def home(request):
@@ -29,7 +23,7 @@ def home(request):
 def register_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
-    
+
     form = RegisterForm(request.POST or None)
 
     if request.method == "POST":
@@ -65,7 +59,7 @@ def login_view(request):
 
         if user and user.check_password(password) and user.is_active:
             login(request, user)
-            messages.success(request, f"Welcome back, {user.first_name or user.username}!")
+            messages.success(request, f"Welcome back, {user.username}!")
             return redirect(request.GET.get("next") or "dashboard")
 
         messages.error(request, "Invalid credentials.")
@@ -95,7 +89,7 @@ def admin_dashboard(request):
     total = users.count()
     admins = users.filter(role='admin').count()
     customers = users.filter(role='customer').count()
-    
+
     return render(request, "dashboards/admin.html", {
         "users": users,
         "total": total,
@@ -107,18 +101,13 @@ def admin_dashboard(request):
 
 @role_required("customer")
 def customer_dashboard(request):
-    user = request.user
-    meta = {
-        "kdf_salt": user.kdf_salt,
-        "key_check": base64.b64encode(user.master_key_check).decode() if user.master_key_check else None,
-    }
-    return render(request, "dashboards/customer.html", {"meta": meta})
+    return render(request, "dashboards/customer.html", {"meta": _user_meta(request.user)})
 
 
 
 @login_required
 def profile_view(request):
-    return render(request, "accounts/profile.html")
+    return render(request, "accounts/profile.html", {"meta": _user_meta(request.user)})
 
 
 
@@ -136,12 +125,13 @@ def profile_edit(request):
 
 
 
+#--- Helpers ---
+
 def _body(request):
     try:
         return json.loads(request.body)
     except ValueError:
         return {}
-
 
 
 def _clean(d):
@@ -153,33 +143,62 @@ def _clean(d):
     return title, etype, base64.b64decode(blob)
 
 
-
 def _ser(e):
     return {
         "id": e.id,
         "title": e.title,
         "entry_type": e.entry_type,
-        "encrypted_data": base64.b64encode(e.encrypted_data).decode(),  # ← was raw memoryview
+        "encrypted_data": base64.b64encode(e.encrypted_data).decode(),
     }
 
 
 
+def _user_meta(user):
+    return{
+        "kdf_salt": user.kdf_salt,
+        "key_check": base64.b64encode(user.master_key_check).decode() if user.master_key_check else "",
+    }
+
+
+#--- Vault endpoints ---
+
 @role_required("customer")
 @require_POST
 def vault_setup(request):
-    if request.user.kdf_salt:
-        return JsonResponse({"error": "Master key is already set."}, status=400)
-    
     d = _body(request)
     salt, check = d.get("kdf_salt"), d.get("master_key_check")
 
     if not isinstance(salt, str) or not isinstance(check, str) or not salt or not check:
         return JsonResponse({"error": "Invalid data."}, status=400)
-    
+
     request.user.kdf_salt = salt[:64]
     request.user.master_key_check = base64.b64decode(check)
     request.user.save(update_fields=["kdf_salt", "master_key_check"])
     return JsonResponse({"ok": True})
+
+
+
+@role_required("customer")
+def change_master_key(request):
+    if request.method == "POST":
+        old = request.POST.get("old_password", "")
+        new = request.POST.get("new_password", "")
+        new2 = request.POST.get("new_password2", "")
+
+        if len(new) < 12:
+            messages.error(request, "New password must be at least 12 characters.")
+        elif new != new2:
+            messages.error(request, "New passwords don't match.")
+        else:
+            try:
+                request.user.change_master_key(old, new)
+                request.user.set_password(new)  # ← this updates the login hash
+                request.user.save()
+                messages.success(request, "Password changed.")
+            except Exception:
+                messages.error(request, "Current password is incorrect.")
+
+    return redirect("profile")   
 
 
 
@@ -192,6 +211,7 @@ def vault_entries(request):
     c = _clean(_body(request))
     if not c:
         return JsonResponse({"error": "Invalid entry."}, status=400)
+
     e = VaultEntry.objects.create(user=request.user, title=c[0], entry_type=c[1], encrypted_data=c[2])
     return JsonResponse(_ser(e), status=201)
 
@@ -201,6 +221,7 @@ def vault_entries(request):
 @require_http_methods(["PUT", "DELETE"])
 def vault_entry_detail(request, pk):
     e = get_object_or_404(VaultEntry, pk=pk, user=request.user)
+
     if request.method == "DELETE":
         e.delete()
         return JsonResponse({"ok": True})
@@ -208,6 +229,23 @@ def vault_entry_detail(request, pk):
     c = _clean(_body(request))
     if not c:
         return JsonResponse({"error": "Invalid entry."}, status=400)
+
     e.title, e.entry_type, e.encrypted_data = c
     e.save()
     return JsonResponse(_ser(e))
+
+
+
+@role_required("customer")
+@require_POST
+def vault_reencrypt_entry(request, pk):
+    e = get_object_or_404(VaultEntry, pk=pk, user=request.user)
+    d = _body(request)
+    blob = d.get("encrypted_data")
+
+    if not isinstance(blob, str) or not blob:
+        return JsonResponse({"error": "Invalid data."}, status=400)
+
+    e.encrypted_data = base64.b64decode(blob)
+    e.save(update_fields=["encrypted_data"])
+    return JsonResponse({"ok": True})   
