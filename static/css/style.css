@@ -29,7 +29,7 @@ a{color:var(--primary);text-decoration:none}
 
 /* ---------- forms ---------- */
 .auth-wrap{min-height:calc(100vh - 80px);display:grid;place-items:center;padding:16px}
-.auth-card{width:100%;max-width:440px}
+.auth-card{width:100%;max-width:520px}
 .auth-card h2{margin-top:0;font-size:1.7rem}
 .form p{margin:0 0 16px}
 .form label{display:block;font-weight:600;margin-bottom:5px;font-size:.9rem}
