@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{% if editing %}Edit Entry{% else %}Add Entry{% endif %}{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 500px;">
+  <div class="card">
+    <h2 style="margin-top:0">{{ editing|yesno:"Edit entry,Add entry" }}</h2>
+
+    <form method="post" class="form">
+      {% csrf_token %}
+
+      <p class="field">
+        <label>Title</label>
+        <input type="text" name="title" maxlength="100" required
+               value="{{ editing.data.title|default:'' }}" placeholder="e.g. Gmail">
+      </p>
+      <p class="field">
+        <label>Type</label>
+        <select name="entry_type">
+          <option value="login" {% if editing.data.entry_type == "login" %}selected{% endif %}>Login</option>
+          <option value="note" {% if editing.data.entry_type == "note" %}selected{% endif %}>Secure note</option>
+        </select>
+      </p>
+      <p class="field">
+        <label>Username / Email</label>
+        <input type="text" name="username" autocomplete="off"
+               value="{{ editing.data.username|default:'' }}">
+      </p>
+      <p class="field">
+        <label>Password</label>
+        <input type="text" name="password" autocomplete="off"
+               value="{{ editing.data.password|default:'' }}">
+      </p>
+      <p class="field">
+        <label>Website URL</label>
+        <input type="url" name="url" value="{{ editing.data.url|default:'' }}">
+      </p>
+      <p class="field">
+        <label>Notes</label>
+        <textarea name="notes" rows="3">{{ editing.data.notes|default:'' }}</textarea>
+      </p>
+
+      <button class="btn" type="submit">{{ editing|yesno:"Save changes,Add Entry" }}</button>
+      <a class="btn btn-outline" href="{% url 'customer_dashboard' %}">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,175 +1,196 @@
-import base64
 import json
-
+import os
 from django.contrib import messages
-from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST, require_http_methods
-
-from .forms import RegisterForm, ProfileForm
+from django.shortcuts import get_object_or_404, redirect, render
+from .crypto import derive_kek, unwrap_dek, encrypt_entry, decrypt_entry, generate_dek, wrap_dek
 from .decorators import role_required
+from .forms import RegisterForm, ProfileForm
 from .models import User, VaultEntry
 
+#--- Helpers ---
+
+def _unlock(request):
+    u, pw = request.user, request.session.get("master_password", "")
+    if not pw:
+        return None
+    if not u.kdf_salt:
+        salt = os.urandom(16)
+        kek = derive_kek(pw, salt)
+        dek = generate_dek()
+        u.kdf_salt = salt.hex()
+        u.master_key_check = wrap_dek(kek, dek)
+        u.save(update_fields=["kdf_salt", "master_key_check"])
+        return dek
+    try:
+        return unwrap_dek(derive_kek(pw, bytes.fromhex(u.kdf_salt)), u.master_key_check)
+    except Exception:
+        return None
+
+
+def _decrypt(dek, entry):
+    try:
+        return json.loads(decrypt_entry(dek, entry.encrypted_data))
+    except Exception:
+        return None
+
+
+def _user_meta(user):
+    return {"kdf_salt": user.kdf_salt,
+            "key_check": user.master_key_check.hex() if user.master_key_check else ""}
+
+
+# --- Auth ---
 
 def home(request):
-    if request.user.is_authenticated:
-        return redirect("dashboard")
-    return redirect("login")
-
+    return redirect("dashboard" if request.user.is_authenticated else "login")
 
 
 def register_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
-
     form = RegisterForm(request.POST or None)
-
-    if request.method == "POST":
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Account created! Please log in.")
-            return redirect("login")
-        messages.error(request, "Please input the necessary details.")
-
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Account created! Please log in.")
+        return redirect("login")
     return render(request, "accounts/register.html", {"form": form})
-
 
 
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
-
     if request.method == "POST":
-        identifier = request.POST.get("identifier", "").strip()
-        password = request.POST.get("password", "")
-
-        user = User.objects.filter(username=identifier).first()
-        if user is None:
-            user = User.objects.filter(email=identifier.lower()).first()
-
-        if user:
-            if user.role == User.ADMIN:
-                if user.username != identifier:
-                    user = None
-            else:
-                if user.email.lower() != identifier.lower():
-                    user = None
-
-        if user and user.check_password(password) and user.is_active:
+        ident = request.POST.get("identifier", "").strip()
+        pw = request.POST.get("password", "")
+        user = User.objects.filter(username=ident, role=User.ADMIN).first() \
+            or User.objects.filter(email__iexact=ident, role=User.CUSTOMER).first()
+        if user and user.is_active and user.check_password(pw):
             login(request, user)
-            messages.success(request, f"Welcome back, {user.username}!")
+            request.session["master_password"] = pw
+            messages.success(request, f"Welcome, {user.username}!")
             return redirect(request.GET.get("next") or "dashboard")
-
         messages.error(request, "Invalid credentials.")
-
     return render(request, "accounts/login.html")
-
 
 
 def logout_view(request):
     if request.method == "POST":
+        request.session.pop("master_password", None)
         logout(request)
         messages.success(request, "You have been logged out.")
     return redirect("login")
 
 
+# --- Dashboards ---
 
 @login_required
 def dashboard_redirect(request):
-    target = "admin_dashboard" if request.user.role == "admin" else "customer_dashboard"
-    return redirect(target)
-
+    return redirect("admin_dashboard" if request.user.role == User.ADMIN else "customer_dashboard")
 
 
 @role_required("admin")
 def admin_dashboard(request):
     users = User.objects.all()
-    total = users.count()
-    admins = users.filter(role='admin').count()
-    customers = users.filter(role='customer').count()
-
     return render(request, "dashboards/admin.html", {
         "users": users,
-        "total": total,
-        "admins": admins,
-        "customers": customers,
+        "total": users.count(),
+        "admins": users.filter(role=User.ADMIN).count(),
+        "customers": users.filter(role=User.CUSTOMER).count(),
     })
-
 
 
 @role_required("customer")
 def customer_dashboard(request):
-    return render(request, "dashboards/customer.html", {"meta": _user_meta(request.user)})
+    dek = _unlock(request)
+    if dek is None:
+        messages.error(request, "Session expired. Please log in again.")
+        return redirect("login")
+
+    entries = [{"entry": e, "data": d} for e in request.user.vault_entries.all()
+               if (d := _decrypt(dek, e)) is not None]
+    return render(request, "dashboards/customer.html", {"entries": entries})
 
 
+# --- Entries ---
+
+@role_required("customer")
+def entry_form(request):
+    dek = _unlock(request)
+    if dek is None:
+        return redirect("login")
+
+    editing = None
+    if request.GET.get("edit"):
+        e = get_object_or_404(VaultEntry, pk=request.GET["edit"], user=request.user)
+        if (data := _decrypt(dek, e)) is not None:
+            editing = {"entry": e, "data": data}
+
+    if request.method == "POST":
+        p = request.POST
+        blob = encrypt_entry(dek, json.dumps({k: p.get(k, "") for k in ("username", "password", "url", "notes")}))
+        title = p.get("title", "").strip()[:100]
+        etype = p.get("entry_type", "login")
+
+        if editing:
+            editing["entry"].title = title
+            editing["entry"].entry_type = etype
+            editing["entry"].encrypted_data = blob
+            editing["entry"].save()
+            messages.success(request, "Entry updated.")   
+        else:
+            VaultEntry.objects.create(user=request.user, title=title, entry_type=etype, encrypted_data=blob)
+            messages.success(request, "Entry added.")
+        return redirect("customer_dashboard")
+
+    return render(request, "dashboards/entry_form.html", {"editing": editing})
+
+
+@role_required("customer")
+def entry_delete(request):
+    if request.method == "POST":
+        get_object_or_404(VaultEntry, pk=request.POST.get("id"), user=request.user).delete()
+        messages.success(request, "Entry deleted.")
+    return redirect("customer_dashboard")
+
+
+@role_required("customer")
+def entry_detail(request, pk):
+    dek = _unlock(request)
+    if dek is None:
+        return redirect("login")
+
+    e = get_object_or_404(VaultEntry, pk=pk, user=request.user)
+    if (data := _decrypt(dek, e)) is None:
+        messages.error(request, "Could not decrypt entry.")
+        return redirect("customer_dashboard")
+    return render(request, "dashboards/entry_detail.html", {"entry": e, "data": data})
+
+
+# --- Profile ---
 
 @login_required
 def profile_view(request):
     return render(request, "accounts/profile.html", {"meta": _user_meta(request.user)})
 
 
-
 @login_required
 def profile_edit(request):
-    form = ProfileForm(request.POST or None, request.FILES or None,
-                       instance=request.user)
-    if request.method == "POST":
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Profile updated.")
-            return redirect("profile")
-        messages.error(request, "Could not update profile.")
+    form = ProfileForm(request.POST or None, request.FILES or None, instance=request.user)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Profile updated.")
+        return redirect("profile")
     return render(request, "accounts/profile_edit.html", {"form": form})
 
 
-
-#--- Helpers ---
-
-def _body(request):
-    try:
-        return json.loads(request.body)
-    except ValueError:
-        return {}
-
-
-def _clean(d):
-    title = str(d.get("title", "")).strip()[:100]
-    etype, blob = d.get("entry_type"), d.get("encrypted_data")
-
-    if not title or etype not in ("login", "note") or not isinstance(blob, str) or not blob:
-        return None
-    return title, etype, base64.b64decode(blob)
-
-
-def _ser(e):
-    return {
-        "id": e.id,
-        "title": e.title,
-        "entry_type": e.entry_type,
-        "encrypted_data": base64.b64encode(e.encrypted_data).decode(),
-    }
-
-
-
-def _user_meta(user):
-    return{
-        "kdf_salt": user.kdf_salt,
-        "key_check": base64.b64encode(user.master_key_check).decode() if user.master_key_check else "",
-    }
-
-
-
-#--- Change Credentials ---
+# --- Change credentials ---
 
 @role_required("customer")
 def change_master_key(request):
     if request.method == "POST":
-        old = request.POST.get("old_password", "")
-        new = request.POST.get("new_password", "")
-        new2 = request.POST.get("new_password2", "")
-
+        old, new, new2 = (request.POST.get(k, "") for k in ("old_password", "new_password", "new_password2"))
         if len(new) < 10:
             messages.error(request, "New password must be at least 10 characters.")
         elif new != new2:
@@ -179,97 +200,26 @@ def change_master_key(request):
                 request.user.change_master_key(old, new)
                 request.user.set_password(new)
                 request.user.save()
+                request.session["master_password"] = new
                 messages.success(request, "Password changed.")
             except Exception:
                 messages.error(request, "Current password is incorrect.")
-
-    return redirect("profile")   
+    return redirect("profile")
 
 
 @role_required("customer")
 def change_email(request):
     if request.method == "POST":
-        new_email = request.POST.get("new_email", "").strip().lower()
-        password = request.POST.get("password", "")
-
-        if not new_email or "@" not in new_email:
+        email = request.POST.get("new_email", "").strip().lower()
+        if not email or "@" not in email:
             messages.error(request, "Invalid email address.")
-        elif User.objects.filter(email=new_email).exclude(pk=request.user.pk).exists():
+        elif User.objects.filter(email=email).exclude(pk=request.user.pk).exists():
             messages.error(request, "That email is already in use.")
-        elif not request.user.verify_master_key(password):
+        elif not request.user.verify_master_key(request.POST.get("password", "")):
             messages.error(request, "Incorrect password.")
         else:
-            request.user.email = new_email
+            request.user.email = email
             request.user.save(update_fields=["email"])
             logout(request)
             messages.success(request, "Email changed. Please log in with your new email.")
-
-    return redirect("profile")
-
-
-
-#--- Vault endpoints ---
-
-@role_required("customer")
-@require_POST
-def vault_setup(request):
-    d = _body(request)
-    salt, check = d.get("kdf_salt"), d.get("master_key_check")
-
-    if not isinstance(salt, str) or not isinstance(check, str) or not salt or not check:
-        return JsonResponse({"error": "Invalid data."}, status=400)
-
-    request.user.kdf_salt = salt[:64]
-    request.user.master_key_check = base64.b64decode(check)
-    request.user.save(update_fields=["kdf_salt", "master_key_check"])
-    return JsonResponse({"ok": True})
-
-
-
-@role_required("customer")
-@require_http_methods(["GET", "POST"])
-def vault_entries(request):
-    if request.method == "GET":
-        return JsonResponse([_ser(e) for e in request.user.vault_entries.all()], safe=False)
-
-    c = _clean(_body(request))
-    if not c:
-        return JsonResponse({"error": "Invalid entry."}, status=400)
-
-    e = VaultEntry.objects.create(user=request.user, title=c[0], entry_type=c[1], encrypted_data=c[2])
-    return JsonResponse(_ser(e), status=201)
-
-
-
-@role_required("customer")
-@require_http_methods(["PUT", "DELETE"])
-def vault_entry_detail(request, pk):
-    e = get_object_or_404(VaultEntry, pk=pk, user=request.user)
-
-    if request.method == "DELETE":
-        e.delete()
-        return JsonResponse({"ok": True})
-
-    c = _clean(_body(request))
-    if not c:
-        return JsonResponse({"error": "Invalid entry."}, status=400)
-
-    e.title, e.entry_type, e.encrypted_data = c
-    e.save()
-    return JsonResponse(_ser(e))
-
-
-
-@role_required("customer")
-@require_POST
-def vault_reencrypt_entry(request, pk):
-    e = get_object_or_404(VaultEntry, pk=pk, user=request.user)
-    d = _body(request)
-    blob = d.get("encrypted_data")
-
-    if not isinstance(blob, str) or not blob:
-        return JsonResponse({"error": "Invalid data."}, status=400)
-
-    e.encrypted_data = base64.b64decode(blob)
-    e.save(update_fields=["encrypted_data"])
-    return JsonResponse({"ok": True})   
+    return redirect("login")   
