@@ -38,18 +38,34 @@ def register_view(request):
     return render(request, "accounts/register.html", {"form": form})
 
 
+
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
+
     if request.method == "POST":
-        user = authenticate(request,
-                            username=request.POST.get("username"),
-                            password=request.POST.get("password"))
+        identifier = request.POST.get("identifier", "").strip()
+        password = request.POST.get("password", "")
+
+        user = User.objects.filter(username=identifier).first()
+        if user is None:
+            user = User.objects.filter(email=identifier.lower()).first()
+
         if user:
+            if user.role == User.ADMIN:
+                if user.username != identifier:
+                    user = None
+            else:
+                if user.email.lower() != identifier.lower():
+                    user = None
+
+        if user and user.check_password(password) and user.is_active:
             login(request, user)
             messages.success(request, f"Welcome back, {user.first_name or user.username}!")
             return redirect(request.GET.get("next") or "dashboard")
-        messages.error(request, "Invalid username or password.")
+
+        messages.error(request, "Invalid credentials.")
+
     return render(request, "accounts/login.html")
 
 

@@ -5,9 +5,10 @@
   <div class="card auth-card">
     <h2>Welcome back</h2>
     <p class="sub">Log in to your account</p>
-    <form method="post" class="form">{% csrf_token %}
-      <p><label>Username</label><input name="username" required autofocus></p>
-      <p><label>Password</label><input name="password" type="password" required></p>
+    <form method="post" action="{% url 'login' %}" class="form" novalidate>
+      {% csrf_token %}
+      <p><label>Email</label><input name="identifier" required autofocus></p>
+      <p><label>Master Password</label><input name="password" type="password" required></p>
       <button class="btn">Log in</button>
     </form>
     <p class="switch">No account? <a href="{% url 'register' %}">Register</a></p>
