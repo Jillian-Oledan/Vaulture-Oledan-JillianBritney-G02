@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_guest.html" %}
 {% block title %}Register{% endblock %}
 {% block content %}
 <div class="auth-wrap">
@@ -49,9 +49,9 @@
         <div class="error">{{ form.non_field_errors }}</div>
       {% endif %}
 
-      <button class="btn">Create account</button>
+      <button class="btn btn-block">Create account</button>
     </form>
     <p class="switch">Already registered? <a href="{% url 'login' %}">Log in</a></p>
   </div>
 </div>
-{% endblock %}   
+{% endblock %}

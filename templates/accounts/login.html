@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_guest.html" %}
 {% block title %}Login{% endblock %}
 {% block content %}
 <div class="auth-wrap">
@@ -9,7 +9,7 @@
       {% csrf_token %}
       <p><label>Email</label><input name="identifier" required autofocus></p>
       <p><label>Master Password</label><input name="password" type="password" required></p>
-      <button class="btn">Log in</button>
+      <button class="btn btn-block">Log in</button>
     </form>
     <p class="switch">No account? <a href="{% url 'register' %}">Register</a></p>
   </div>
