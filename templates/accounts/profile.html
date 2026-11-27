@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}My Profile{% endblock %}
 {% block content %}
-<div class="container" style="max-width: 500px;">
+<div class="container" style="max-width: 600px;">
   <div class="card">
     <h2>{{ user.username }}</h2>
     <p><strong>First name:</strong> {{ user.first_name|default:"—" }}</p>
@@ -11,33 +11,56 @@
   </div>
 
   {% if meta.kdf_salt %}
-  <div class="card" style="margin-top:16px">
-    <h3 style="margin-top:0">Change master password</h3>
+  <details style="margin-top:16px">
+    <summary class="btn btn-outline" style="cursor:pointer; list-style:none; width:100%; text-align:center; padding:8px 16px;">Change email</summary>
 
-    <form method="post" action="{% url 'change_master_key' %}" class="form">
-      {% csrf_token %}
+    <div class="card" style="margin-top:12px">
+      <form method="post" action="{% url 'change_email' %}" class="form">
+        {% csrf_token %}
 
-      <div class="warning">
-        <strong>Important:</strong> Changing your password will re-encrypt your vault.
-        Make sure you remember the new one.
-      </div>
+        <p class="field">
+          <label>New email</label>
+          <input type="email" name="new_email" required>
+        </p>
+        <p class="field">
+          <label>Current password (to verify)</label>
+          <input type="password" name="password" required>
+        </p>
 
-      <p class="field">
-        {{ "Current password"|capfirst }}
-        <input type="password" name="old_password" required>
-      </p>
-      <p class="field">
-        <label>New password</label>
-        <input type="password" name="new_password" required>
-      </p>
-      <p class="field">
-        <label>Confirm new password</label>
-        <input type="password" name="new_password2" required>
-      </p>
+        <button class="btn" type="submit">Confirm new email</button>
+      </form>
+    </div>
+  </details>
 
-      <button class="btn" type="submit">Change password</button>
-    </form>
-  </div>
+  <details style="margin-top:16px">
+    <summary class="btn btn-outline" style="cursor:pointer; list-style:none; width:100%; text-align:center; padding:8px 16px;">Change password</summary>
+
+    <div class="card" style="margin-top:12px">
+      <form method="post" action="{% url 'change_master_key' %}" class="form">
+        {% csrf_token %}
+
+        <div class="warning">
+          <strong>Important:</strong> Changing your password will re-encrypt your vault.
+          Make sure you remember the new one.
+        </div>
+
+        <p class="field">
+          <label>Current password</label>
+          <input type="password" name="old_password" required>
+        </p>
+        <p class="field">
+          <label>New password</label>
+          <input type="password" name="new_password" required>
+        </p>
+        <p class="field">
+          <label>Confirm new password</label>
+          <input type="password" name="new_password2" required>
+        </p>
+
+        <button class="btn" type="submit">Change password</button>
+      </form>
+    </div>
+  </details>
   {% endif %}
 </div>
 {% endblock %}   

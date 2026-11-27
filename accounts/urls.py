@@ -14,5 +14,7 @@ urlpatterns = [
     path("vault/setup/", views.vault_setup, name="vault_setup"),
     path("vault/entries/", views.vault_entries, name="vault_entries"),
     path("vault/entries/<int:pk>/reencrypt/", views.vault_reencrypt_entry, name="vault_reencrypt_entry"),
+
     path("profile/change-master-key/", views.change_master_key, name="change_master_key"),   
+    path("profile/change-email/", views.change_email, name="change_email"),   
 ]

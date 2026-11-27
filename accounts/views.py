@@ -160,6 +160,54 @@ def _user_meta(user):
     }
 
 
+
+#--- Change Credentials ---
+
+@role_required("customer")
+def change_master_key(request):
+    if request.method == "POST":
+        old = request.POST.get("old_password", "")
+        new = request.POST.get("new_password", "")
+        new2 = request.POST.get("new_password2", "")
+
+        if len(new) < 10:
+            messages.error(request, "New password must be at least 10 characters.")
+        elif new != new2:
+            messages.error(request, "New passwords don't match.")
+        else:
+            try:
+                request.user.change_master_key(old, new)
+                request.user.set_password(new)
+                request.user.save()
+                messages.success(request, "Password changed.")
+            except Exception:
+                messages.error(request, "Current password is incorrect.")
+
+    return redirect("profile")   
+
+
+@role_required("customer")
+def change_email(request):
+    if request.method == "POST":
+        new_email = request.POST.get("new_email", "").strip().lower()
+        password = request.POST.get("password", "")
+
+        if not new_email or "@" not in new_email:
+            messages.error(request, "Invalid email address.")
+        elif User.objects.filter(email=new_email).exclude(pk=request.user.pk).exists():
+            messages.error(request, "That email is already in use.")
+        elif not request.user.verify_master_key(password):
+            messages.error(request, "Incorrect password.")
+        else:
+            request.user.email = new_email
+            request.user.save(update_fields=["email"])
+            logout(request)
+            messages.success(request, "Email changed. Please log in with your new email.")
+
+    return redirect("profile")
+
+
+
 #--- Vault endpoints ---
 
 @role_required("customer")
@@ -175,30 +223,6 @@ def vault_setup(request):
     request.user.master_key_check = base64.b64decode(check)
     request.user.save(update_fields=["kdf_salt", "master_key_check"])
     return JsonResponse({"ok": True})
-
-
-
-@role_required("customer")
-def change_master_key(request):
-    if request.method == "POST":
-        old = request.POST.get("old_password", "")
-        new = request.POST.get("new_password", "")
-        new2 = request.POST.get("new_password2", "")
-
-        if len(new) < 12:
-            messages.error(request, "New password must be at least 12 characters.")
-        elif new != new2:
-            messages.error(request, "New passwords don't match.")
-        else:
-            try:
-                request.user.change_master_key(old, new)
-                request.user.set_password(new)  # ← this updates the login hash
-                request.user.save()
-                messages.success(request, "Password changed.")
-            except Exception:
-                messages.error(request, "Current password is incorrect.")
-
-    return redirect("profile")   
 
 
 
