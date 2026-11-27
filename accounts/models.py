@@ -7,11 +7,11 @@ from django.conf import settings
 from accounts.crypto import generate_dek, derive_kek, unwrap_dek, wrap_dek
 
 class User(AbstractUser):
-    ADMIN, MEMBER = "admin", "member"
-    ROLES = [(ADMIN, "Admin"), (MEMBER, "Member")]
+    ADMIN, CUSTOMER = "admin", "customer"
+    ROLES = [(ADMIN, "Admin"), (CUSTOMER, "Customer")]
 
     email = models.EmailField(unique=True)
-    role = models.CharField(max_length=10, choices=[('admin', 'Admin'), ('customer', 'Customer')], default='customer')
+    role = models.CharField(max_length=10, choices=ROLES, default=CUSTOMER)
     contact_number = models.CharField(max_length=20, blank=True)
     photo = models.ImageField(upload_to="profiles/", blank=True, null=True)
 
@@ -32,20 +32,20 @@ class User(AbstractUser):
         dek = generate_dek()
         
         self.kdf_salt = salt.hex()
-        self.wrap_dek = wrap_dek(kek, dek)
+        self.master_key_check = wrap_dek(kek, dek)
         self.save()
 
     def verify_master_key(self, master_password: str) -> bool:
         try:
             kek = derive_kek(master_password, bytes.fromhex(self.kdf_salt))
-            unwrap_dek(kek, self.wrap_dek)
+            unwrap_dek(kek, self.master_key_check)
             return True
         except Exception:
             return False
 
     def unlock(self, master_password: str) -> bytes:
         kek = derive_kek(master_password, bytes.fromhex(self.kdf_salt))
-        return unwrap_dek(kek, self.wrap_dek)
+        return unwrap_dek(kek, self.master_key_check)
 
     def change_master_key(self, old_password: str, new_password: str):
         dek = self.unlock(old_password)
@@ -53,7 +53,7 @@ class User(AbstractUser):
         kek = derive_kek(new_password, salt)
 
         self.kdf_salt = salt.hex()
-        self.wrap_dek = wrap_dek(kek, dek)
+        self.master_key_check = wrap_dek(kek, dek)
         self.save()
     
     #-----------------------------------------------------------------------------------------------

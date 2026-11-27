@@ -2,14 +2,56 @@
 {% block title %}Register{% endblock %}
 {% block content %}
 <div class="auth-wrap">
-  <div class="card auth-card">
+  <div class="card auth-card" style="max-width: 700px;">
     <h2>Create an account</h2>
     <p class="sub">It only takes a minute</p>
-    <form method="post" class="form" novalidate>{% csrf_token %}
-      {{ form.as_p }}
+    <form method="post" class="form" novalidate>
+      {% csrf_token %}
+
+      <div style="display: flex; gap: 12px;">
+        <p class="field" style="flex: 1;">
+          {{ form.first_name.label_tag }}
+          {{ form.first_name }}
+        </p>
+        <p class="field" style="flex: 1;">
+          {{ form.last_name.label_tag }}
+          {{ form.last_name }}
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 12px;">
+        <p class="field" style="flex: 1;">
+          {{ form.username.label_tag }}
+          {{ form.username }}
+        </p>
+        <p class="field" style="flex: 1;">
+          {{ form.email.label_tag }}
+          {{ form.email }}
+        </p>
+      </div>
+
+      <div class="warning">
+        <strong>Important:</strong> Your master password cannot be recovered.
+        If you forget it, you will <em>permanently lose access</em> to your vault.
+        Write it down and store it somewhere safe.
+      </div><br>
+
+      <p class="field">
+        {{ form.master_password.label_tag }}
+        {{ form.master_password }}
+      </p>
+      <p class="field">
+        {{ form.master_password_confirm.label_tag }}
+        {{ form.master_password_confirm }}
+      </p>
+
+      {% if form.errors %}
+        <div class="error">{{ form.non_field_errors }}</div>
+      {% endif %}
+
       <button class="btn">Create account</button>
     </form>
     <p class="switch">Already registered? <a href="{% url 'login' %}">Log in</a></p>
   </div>
 </div>
-{% endblock %}
+{% endblock %}   
